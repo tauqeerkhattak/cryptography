@@ -14,14 +14,11 @@
 
 package dev.dint.cryptography_flutter
 
-import android.os.Build
-import androidx.annotation.RequiresApi
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import io.flutter.plugin.common.PluginRegistry.Registrar
 import java.math.BigInteger
 import java.security.*
 import java.security.interfaces.*
@@ -45,8 +42,8 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
     override fun onMethodCall(call: MethodCall, result: Result) {
         try {
             when (call.method) {
-                "androidCryptoProviders" -> androidCryptoProviders(call, result)
-                "androidCryptoProvidersAdd" -> androidCryptoProvidersAdd(call, result)
+                "androidCryptoProviders" -> androidCryptoProviders(result)
+                "androidCryptoProvidersAdd" -> androidCryptoProvidersAdd(call)
 
                 // Ciphers
                 "encrypt" -> encrypt(call, result)
@@ -62,13 +59,13 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
                 "Ecdsa.verify" -> ecdsaVerify(call, result)
 
                 // Ed25519
-                "Ed25519.newKeyPair" -> ed25519NewKeyPair(call, result)
-                "Ed25519.sign" -> ed25519Sign(call, result)
-                "Ed25519.verify" -> ed25519Verify(call, result)
+                "Ed25519.newKeyPair" -> ed25519NewKeyPair(result)
+                "Ed25519.sign" -> ed25519Sign(result)
+                "Ed25519.verify" -> ed25519Verify(result)
 
                 // X25519
-                "X25519.newKeyPair" -> x25519NewKeyPair(call, result)
-                "X25519.sign" -> x25519SharedSecretKey(call, result)
+                "X25519.newKeyPair" -> x25519NewKeyPair(result)
+                "X25519.sign" -> x25519SharedSecretKey(result)
 
                 // Other
                 "hmac" -> hmac(call, result)
@@ -86,7 +83,7 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
         }
     }
 
-    private fun androidCryptoProviders(call: MethodCall, result: Result) {
+    private fun androidCryptoProviders(result: Result) {
         val providers = Security.getProviders()
         val list = mutableListOf<Map<String, Any>>()
         for (provider in providers) {
@@ -112,7 +109,7 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
     }
 
 
-    private fun androidCryptoProvidersAdd(call: MethodCall, result: Result) {
+    private fun androidCryptoProvidersAdd(call: MethodCall) {
         val provider = Class.forName(call.arguments as String).getConstructor().newInstance()
         Security.addProvider(provider as Provider)
     }
@@ -140,12 +137,12 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
         if (androidAlgo == null || macLength == null) {
             result.error(
                 "UNSUPPORTED_ALGORITHM",
-                "cryptography_flutter does not support algorithm ${dartAlgo} in Android.",
+                "cryptography_flutter does not support algorithm $dartAlgo in Android.",
                 null
             )
             return
         }
-        var cipher: Cipher;
+        val cipher: Cipher
         try {
             cipher = Cipher.getInstance(androidAlgo)
         } catch (error: NoSuchAlgorithmException) {
@@ -161,7 +158,7 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
         val secretKey = call.argument<ByteArray>("key")!!
         val nonce = call.argument<ByteArray>("nonce")!!
         val aad = call.argument<ByteArray>("aad")
-        var mac = call.argument<ByteArray>("mac")
+        val mac = call.argument<ByteArray>("mac")
         val params = if (dartAlgo == "AES_GCM") {
             GCMParameterSpec(16 * 8, nonce)
         } else {
@@ -214,12 +211,12 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
         if (androidAlgo == null || macLength == null) {
             result.error(
                 "UNSUPPORTED_ALGORITHM",
-                "cryptography_flutter does not support algorithm ${dartAlgo} in Android.",
+                "cryptography_flutter does not support algorithm $dartAlgo in Android.",
                 null
             )
             return
         }
-        var cipher: Cipher;
+        val cipher: Cipher
         try {
             cipher = Cipher.getInstance(androidAlgo)
         } catch (error: NoSuchAlgorithmException) {
@@ -235,7 +232,6 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
         val secretKey = call.argument<ByteArray>("key")
         val nonce = call.argument<ByteArray>("nonce")
         val aad = call.argument<ByteArray>("aad")
-        val dartMacAlgo = call.argument<String>("macAlgo")
 
         val params = if (dartAlgo == "AES_GCM") {
             GCMParameterSpec(macLength * 8, nonce)
@@ -279,8 +275,7 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
             result.error("UNSUPPORTED_ALGORITHM", null, null)
             return
         }
-        val provider = call.argument<String>("androidProvider")
-        val generator = when (provider) {
+        val generator = when (val provider = call.argument<String>("androidProvider")) {
             null -> KeyPairGenerator.getInstance("EC")
             else -> KeyPairGenerator.getInstance("EC", provider)
         }
@@ -311,8 +306,6 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
             return
         }
         val d = call.argument<ByteArray>("localD")!!
-        val x = call.argument<ByteArray>("localX")!!
-        val y = call.argument<ByteArray>("localY")!!
         val provider = call.argument<String>("androidProvider")
 
         val parameters = when (provider) {
@@ -376,8 +369,6 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
 
         val message = call.argument<ByteArray>("data")!!
         val d = call.argument<ByteArray>("d")!!
-        val x = call.argument<ByteArray>("x")!!
-        val y = call.argument<ByteArray>("y")!!
         val provider = call.argument<String>("androidProvider")
 
         val parameters = when (provider) {
@@ -469,26 +460,26 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
     //
     // ED25519
     //
-    private fun ed25519NewKeyPair(call: MethodCall, result: Result) {
+    private fun ed25519NewKeyPair(result: Result) {
         result.error("UNSUPPORTED_ALGORITHM", null, null)
     }
 
-    private fun ed25519Sign(call: MethodCall, result: Result) {
+    private fun ed25519Sign(result: Result) {
         result.error("UNSUPPORTED_ALGORITHM", null, null)
     }
 
-    private fun ed25519Verify(call: MethodCall, result: Result) {
+    private fun ed25519Verify(result: Result) {
         result.error("UNSUPPORTED_ALGORITHM", null, null)
     }
 
     //
     // X25519
     //
-    private fun x25519NewKeyPair(call: MethodCall, result: Result) {
+    private fun x25519NewKeyPair(result: Result) {
         result.error("UNSUPPORTED_ALGORITHM", null, null)
     }
 
-    private fun x25519SharedSecretKey(call: MethodCall, result: Result) {
+    private fun x25519SharedSecretKey(result: Result) {
         result.error("UNSUPPORTED_ALGORITHM", null, null)
     }
 
@@ -511,9 +502,9 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
         }
         val key = call.argument<ByteArray>("key")!!
         val data = call.argument<ByteArray>("data")!!
-        val instance = Mac.getInstance(instanceId);
-        instance.init(SecretKeySpec(key, instanceId));
-        val mac = instance.doFinal(data);
+        val instance = Mac.getInstance(instanceId)
+        instance.init(SecretKeySpec(key, instanceId))
+        val mac = instance.doFinal(data)
         result.success(
             hashMapOf(
                 "mac" to mac,
@@ -542,7 +533,7 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
         val iterations = call.argument<Int>("iterations")!!
         val password = call.argument<String>("password")!!
         val nonce = call.argument<ByteArray>("nonce")!!
-        var secretKeyFactory: SecretKeyFactory
+        val secretKeyFactory: SecretKeyFactory
         try {
             secretKeyFactory = SecretKeyFactory.getInstance(instanceId)
         } catch (e: NoSuchAlgorithmException) {
@@ -559,7 +550,7 @@ class CryptographyFlutterPlugin : FlutterPlugin, MethodCallHandler {
         )
         result.success(
             hashMapOf(
-                "hash" to secretKey.getEncoded(),
+                "hash" to secretKey.encoded,
             )
         )
     }
